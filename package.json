@@ -4,6 +4,14 @@
   "description": "Vendor-neutral country, phone and fiscal document registry",
   "author": "rai-braz",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RaiVandeberg/intl-fiscal-registry.git"
+  },
+  "bugs": {
+    "url": "https://github.com/RaiVandeberg/intl-fiscal-registry/issues"
+  },
+  "homepage": "https://github.com/RaiVandeberg/intl-fiscal-registry#readme",
   "type": "module",
   "sideEffects": false,
   "publishConfig": {
