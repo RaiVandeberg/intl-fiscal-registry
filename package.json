@@ -59,7 +59,13 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "check": "npm run typecheck && npm test && npm run build",
+    "release": "semantic-release",
     "prepublishOnly": "npm run check"
+  },
+  "release": {
+    "branches": [
+      "main"
+    ]
   },
   "engines": {
     "node": ">=18"
@@ -75,6 +81,7 @@
     "validation"
   ],
   "devDependencies": {
+    "semantic-release": "^25.0.8",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3",
     "vitest": "^4.1.10"
