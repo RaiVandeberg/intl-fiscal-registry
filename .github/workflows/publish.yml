@@ -1,17 +1,22 @@
-name: Publish package
+name: Validate and release
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
-    tags:
-      - "v*"
+    branches:
+      - main
 
-permissions:
-  contents: read
-  id-token: write
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  publish:
+  validate:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
@@ -19,7 +24,34 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: "24"
+          node-version: "24.10"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate package
+        run: npm run check
+
+  release:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: validate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      id-token: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24.10"
           registry-url: "https://registry.npmjs.org"
           package-manager-cache: false
 
@@ -29,11 +61,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Verify release tag
-        run: test "v$(node -p "require('./package.json').version")" = "$GITHUB_REF_NAME"
-
-      - name: Validate package
-        run: npm run check
-
-      - name: Publish to npm
-        run: npm publish --access public --ignore-scripts
+      - name: Create release and publish package
+        run: npm run release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

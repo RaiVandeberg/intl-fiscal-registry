@@ -41,6 +41,12 @@ Configurações com `example` também expõem `maxLength`. A função `mask` da 
 `maskDocument()` descartam caracteres excedentes e nunca produzem um valor maior que esse limite,
 o que permite reutilizar o metadado diretamente no atributo `maxLength` de inputs.
 
+## Releases
+
+Pull requests executam typecheck, testes e build no GitHub Actions. Depois do merge na `main`,
+o semantic-release cria a versão, a tag e a GitHub Release e publica o pacote no npm via OIDC.
+Use commits convencionais: `fix:` gera patch, `feat:` gera minor e `BREAKING CHANGE:` gera major.
+
 `getDocumentCoverage()` fornece a cobertura auditável. **Todos os 249 países/territórios são
 suportados**; 44 já possuem regras fiscais específicas: CNPJ/BR (inclusive o formato alfanumérico
 de 2026), CUIT/AR, RUT/CL, ABN/AU,
