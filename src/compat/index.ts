@@ -1,4 +1,4 @@
-import { getCountries } from "../countries/index.js";
+import { getCountries, getCountry } from "../countries/index.js";
 import {
   getDocumentConfigs,
   isValidCUIT,
@@ -18,6 +18,11 @@ function normalizeCallingCode(value: string): string {
 const DEFAULT_ISO2_BY_DDI: Readonly<Record<string, string>> = {
   "+1": "US",
   "+7": "RU",
+  "+44": "GB",
+  "+47": "NO",
+  "+61": "AU",
+  "+212": "MA",
+  "+358": "FI",
 };
 
 const LEGACY_DOCUMENT_ALIASES: Readonly<Record<string, { iso2: string; type: string }>> = {
@@ -120,6 +125,7 @@ export const validatePhoneByDDI = (value: string, ddi: string, preferredIso2?: s
   validatePhoneNumber(ddi, value, preferredIso2);
 export const validarCNPJ = isValidCNPJ;
 export { isValidCUIT };
+export const validarCUIT = isValidCUIT;
 export const aplicarMascaraCNPJ = maskCNPJ;
 
 export function documentMask(value: string, documentType = "CNPJ"): string {
@@ -205,3 +211,22 @@ export const docPlaceholderByKey = (key?: string): string => {
 };
 export const validateDocumentByDDI = (ddi: string, value: string, key?: string): boolean =>
   getDocRule(ddi, key)?.isValid(value) ?? true;
+
+/** Strongly-typed aliases for the legacy string fields. */
+export type DDI = LegacyCountryRule["ddi"];
+export type DocKey = LegacyDocRule["key"];
+
+/**
+ * Map of DDI (calling code, digits only) → country name, covering every
+ * country in the registry. Codes shared by multiple countries resolve to the
+ * representative country used by {@link iso2FromDDI} (e.g. "1" → United States).
+ */
+export const COUNTRY_BY_DDI: Record<DDI, string> = Object.fromEntries(
+  [...new Set(getCountries("world").map(({ callingCode }) => onlyDigits(callingCode)))]
+    .filter(Boolean)
+    .map((ddi) => {
+      const iso2 = iso2FromDDI(ddi);
+      return [ddi, iso2 ? getCountry(iso2)?.name ?? "" : ""] as const;
+    })
+    .filter(([, name]) => name !== ""),
+);
