@@ -206,8 +206,11 @@ export const getAllDocKeys = (): string[] => [...new Set(
 )];
 export const docPlaceholderByKey = (key?: string): string => {
   if (!key) return "Documento";
-  const alias = LEGACY_DOCUMENT_ALIASES[key.toUpperCase()];
-  return alias ? getDocumentConfigs(alias.iso2).find(({ type }) => type === alias.type)?.example ?? "Documento" : "Documento";
+  const normalized = key.toUpperCase();
+  const config = getCountries("world")
+    .flatMap(({ iso2 }) => getDocumentConfigs(iso2))
+    .find(({ countryCode, type }) => legacyKey(countryCode, type).toUpperCase() === normalized);
+  return config?.example ?? "Documento";
 };
 export const validateDocumentByDDI = (ddi: string, value: string, key?: string): boolean =>
   getDocRule(ddi, key)?.isValid(value) ?? true;
