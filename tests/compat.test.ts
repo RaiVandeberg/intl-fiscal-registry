@@ -41,4 +41,14 @@ describe("legacy DDI compatibility", () => {
     expect(validateDocumentByDDI("55", "11.222.333/0001-81", "CNPJ")).toBe(true);
     expect(COUNTRY_RULES.some(({ ddi }) => ddi === "55")).toBe(true);
   });
+
+  it("derives placeholders from the dataset for curated non-aliased keys", () => {
+    expect(docPlaceholderByKey("GSTIN")).toBe("09ABCDE1234F1Z5");
+    expect(docPlaceholderByKey("UEN")).toBe("201888888A");
+    expect(docPlaceholderByKey("CNPJ")).toBe("12.ABC.345/01DE-35");
+    expect(docPlaceholderByKey("GSTIN")).not.toBe("Documento");
+    expect(docPlaceholderByKey("UEN")).not.toBe("Documento");
+    expect(docPlaceholderByKey("UNKNOWN_KEY")).toBe("Documento");
+    expect(docPlaceholderByKey()).toBe("Documento");
+  });
 });
