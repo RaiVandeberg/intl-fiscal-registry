@@ -42,6 +42,15 @@ describe("legacy DDI compatibility", () => {
     expect(COUNTRY_RULES.some(({ ddi }) => ddi === "55")).toBe(true);
   });
 
+  it("exposes the canonical short document type alongside the legacy key", () => {
+    expect(getDocRule("56", "RUT_CL")).toMatchObject({ key: "RUT_CL", type: "RUT" });
+    expect(getDocRule("1", "EIN_US")).toMatchObject({ key: "EIN_US", type: "EIN" });
+    expect(getDocRule("1", "BN_CA")).toMatchObject({ key: "BN_CA", type: "BN" });
+    expect(getDocRule("55", "CNPJ")).toMatchObject({ key: "CNPJ", type: "CNPJ" });
+    expect(getDocRule("91", "GSTIN")).toMatchObject({ key: "GSTIN", type: "GSTIN" });
+    expect(getDocTypesForDDI("56").map((d) => d.type)).toContain("RUT");
+  });
+
   it("derives placeholders from the dataset for curated non-aliased keys", () => {
     expect(docPlaceholderByKey("GSTIN")).toBe("09ABCDE1234F1Z5");
     expect(docPlaceholderByKey("UEN")).toBe("201888888A");

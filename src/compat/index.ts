@@ -40,6 +40,8 @@ const LEGACY_DOCUMENT_ALIASES: Readonly<Record<string, { iso2: string; type: str
 
 export interface LegacyDocRule {
   key: string;
+  /** Canonical short document type (no country suffix), e.g. "RUT", "EIN", "CNPJ". */
+  type: string;
   label: string;
   mask: (value: string) => string;
   isValid: (value: string) => boolean;
@@ -64,6 +66,7 @@ function legacyKey(iso2: string, type: string): string {
 function asLegacyRule(config: CompanyDocumentConfig): LegacyDocRule {
   return {
     key: legacyKey(config.countryCode, config.type),
+    type: config.type,
     label: config.label,
     mask: (value) => maskDocument(config.countryCode, config.type, value),
     isValid: (value) => validateDocument(config.countryCode, config.type, value).valid,
