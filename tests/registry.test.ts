@@ -89,7 +89,7 @@ describe("documents", () => {
       expect(resolveDocumentConfig(iso2, "VAT").validationLevel, iso2).toBe("format");
     }
     expect(validateDocument("ES", "VAT", "ES123456789").valid).toBe(false);
-    expect(getDocumentCoverage()).toMatchObject({ totalCountries: 249, specificCountries: 44 });
+    expect(getDocumentCoverage()).toMatchObject({ totalCountries: 249, specificCountries: 57 });
   });
 
   it("covers sourced Asia-Pacific business identifiers at the honest validation level", () => {

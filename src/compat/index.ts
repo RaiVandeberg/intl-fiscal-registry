@@ -1,13 +1,22 @@
 import { getCountries, getCountry } from "../countries/index.js";
+import type { CountryInfo, RegionScope } from "../countries/index.js";
 import {
   getDocumentConfigs,
   isValidCUIT,
   isValidCNPJ,
   maskCNPJ,
   maskDocument,
+  resolveDocumentConfig,
   validateDocument,
 } from "../documents/index.js";
 import type { CompanyDocumentConfig } from "../documents/index.js";
+import {
+  getPersonalDocuments,
+  maskPersonalDocument,
+  resolvePersonalDocument,
+  validatePersonalDocument,
+} from "../personal/index.js";
+import type { PersonalDocumentConfig } from "../personal/index.js";
 import { createPhone, getPhoneMeta } from "../phone/index.js";
 
 function normalizeCallingCode(value: string): string {
@@ -52,6 +61,20 @@ export interface LegacyDocRule {
 export interface LegacyCountryRule {
   ddi: string;
   label: string;
+  /**
+   * Emoji flags of the countries sharing this calling code (e.g. `["🇧🇷"]` for
+   * `+55`, `["🇨🇦","🇺🇸","🇵🇷"]` for `+1`). Optional so consumers can construct
+   * partial rules without breaking their type check; always populated when
+   * produced by this module.
+   */
+  flags?: string[];
+  /**
+   * ISO2 codes sharing this calling code, in the same order as {@link flags}.
+   * Useful when a DDI groups multiple jurisdictions and the consumer needs to
+   * pick one (e.g. the currently selected country in a phone field). Optional
+   * for the same reason as {@link flags}.
+   */
+  iso2s?: string[];
   phoneDigitLengths: number[];
   docTypes: LegacyDocRule[];
 }
@@ -106,6 +129,136 @@ export function getDocTypesForDDI(ddi: string, preferredIso2?: string): LegacyDo
 export function getDocRule(ddi: string, key?: string, preferredIso2?: string): LegacyDocRule | undefined {
   const rules = getDocTypesForDDI(ddi, preferredIso2);
   return key ? rules.find((rule) => rule.key === key || rule.key === key.toUpperCase()) : rules[0];
+}
+
+function fallbackLegacyRuleFor(iso2: string): LegacyDocRule {
+  const config = resolveDocumentConfig(iso2);
+  return {
+    key: legacyKey(config.countryCode, config.type),
+    type: config.type,
+    label: config.label,
+    mask: (value) => maskDocument(config.countryCode, config.type, value),
+    isValid: (value) => validateDocument(config.countryCode, config.type, value).valid,
+    countryCode: config.countryCode,
+    validationLevel: config.validationLevel,
+  };
+}
+
+/**
+ * Same as {@link getDocTypesForDDI}, but when no curated rule exists for the
+ * resolved country it returns the fallback rule (validationLevel: "fallback")
+ * instead of an empty list. Additive companion — the original function is
+ * unchanged so existing callers keep the same behavior.
+ */
+export function getDocTypesForDDIWithFallback(ddi: string, preferredIso2?: string): LegacyDocRule[] {
+  const rules = getDocTypesForDDI(ddi, preferredIso2);
+  if (rules.length > 0) return rules;
+  const iso2 = iso2FromDDI(ddi, preferredIso2);
+  return iso2 ? [fallbackLegacyRuleFor(iso2)] : [];
+}
+
+/**
+ * Same result set as {@link getDocTypesForDDI} without `preferredIso2` (all
+ * curated rules for the DDI), but with `preferredIso2` used to sort the
+ * matching country's rules first instead of filtering the others out. Additive
+ * companion — leaves the original function untouched, so callers of
+ * `getDocTypesForDDI(ddi, iso2)` still get the filtered behavior.
+ */
+export function getDocTypesForDDIOrdered(ddi: string, preferredIso2?: string): LegacyDocRule[] {
+  const normalized = normalizeCallingCode(ddi);
+  const all = getCountries("world")
+    .filter(({ callingCode }) => callingCode === normalized)
+    .flatMap(({ iso2 }) => getDocumentConfigs(iso2).map(asLegacyRule));
+  const deduped = all.filter((rule, index) => all.findIndex(({ key }) => key === rule.key) === index);
+  if (!preferredIso2) return deduped;
+  const preferred = preferredIso2.trim().toUpperCase();
+  return [...deduped].sort((a, b) => {
+    const aPref = a.countryCode === preferred ? 0 : 1;
+    const bPref = b.countryCode === preferred ? 0 : 1;
+    return aPref - bPref;
+  });
+}
+
+function asLegacyPersonalRule(config: PersonalDocumentConfig): LegacyDocRule {
+  return {
+    key: legacyKey(config.countryCode, config.type),
+    type: config.type,
+    label: config.label,
+    mask: (value) => maskPersonalDocument(config.countryCode, config.type, value),
+    isValid: (value) => validatePersonalDocument(config.countryCode, config.type, value).valid,
+    countryCode: config.countryCode,
+    validationLevel: config.validationLevel,
+  };
+}
+
+function fallbackPersonalLegacyRuleFor(iso2: string): LegacyDocRule {
+  const config = resolvePersonalDocument(iso2);
+  return {
+    key: legacyKey(config.countryCode, config.type),
+    type: config.type,
+    label: config.label,
+    mask: (value) => maskPersonalDocument(config.countryCode, config.type, value),
+    isValid: (value) => validatePersonalDocument(config.countryCode, config.type, value).valid,
+    countryCode: config.countryCode,
+    validationLevel: config.validationLevel,
+  };
+}
+
+/**
+ * Returns the curated placeholder (example) for the given document key, or
+ * `undefined` when the document resolves to a fallback config. Additive
+ * companion to {@link docPlaceholderByKey}, which always returns a non-empty
+ * string ("Documento" for unknown/fallback). Prefer this function when the
+ * consumer wants to distinguish "known format" from "unknown format" and use
+ * its own i18n fallback text.
+ */
+export function getPlaceholder(key?: string): string | undefined {
+  if (!key) return undefined;
+  const normalized = key.toUpperCase();
+  const corporate = getCountries("world")
+    .flatMap(({ iso2 }) => getDocumentConfigs(iso2))
+    .find(({ countryCode, type }) => legacyKey(countryCode, type).toUpperCase() === normalized);
+  if (corporate?.example) return corporate.example;
+  const personal = getCountries("world")
+    .flatMap(({ iso2 }) => getPersonalDocuments(iso2))
+    .find(({ countryCode, type }) => legacyKey(countryCode, type).toUpperCase() === normalized);
+  return personal?.example;
+}
+
+/**
+ * Returns corporate + personal document rules for a DDI in a single list,
+ * ordered PJ (corporate) first, PF (personal) second. Never returns an empty
+ * list — falls back to the corporate/personal fallback rule when neither
+ * bucket has a curated rule for the resolved country. Additive; leaves
+ * {@link getDocTypesForDDI} and {@link getDocTypesForDDIOrdered} untouched.
+ */
+export function getAllDocsForDDI(ddi: string, preferredIso2?: string): LegacyDocRule[] {
+  const corporate = getDocTypesForDDIOrdered(ddi, preferredIso2);
+  const normalized = normalizeCallingCode(ddi);
+  const isoInScope = getCountries("world")
+    .filter(({ callingCode }) => callingCode === normalized)
+    .map(({ iso2 }) => iso2);
+  const personal = isoInScope.flatMap((iso2) => getPersonalDocuments(iso2).map(asLegacyPersonalRule));
+  const combined = [...corporate, ...personal];
+  const seen = new Set<string>();
+  const deduped: LegacyDocRule[] = [];
+  for (const rule of combined) {
+    if (seen.has(rule.key)) continue;
+    seen.add(rule.key);
+    deduped.push(rule);
+  }
+  if (deduped.length > 0) {
+    if (!preferredIso2) return deduped;
+    const preferred = preferredIso2.trim().toUpperCase();
+    return [...deduped].sort((a, b) => {
+      const aPref = a.countryCode === preferred ? 0 : 1;
+      const bPref = b.countryCode === preferred ? 0 : 1;
+      return aPref - bPref;
+    });
+  }
+  const iso2 = iso2FromDDI(ddi, preferredIso2);
+  if (!iso2) return [];
+  return [fallbackLegacyRuleFor(iso2), fallbackPersonalLegacyRuleFor(iso2)];
 }
 
 export function getPhoneMask(ddi: string, preferredIso2?: string): string | null {
@@ -193,13 +346,154 @@ const legacyCallingCodes = [...new Set(
 export const COUNTRY_RULES: LegacyCountryRule[] = legacyCallingCodes.map((callingCode) => {
   const ddi = onlyDigits(callingCode);
   const iso2 = iso2FromDDI(ddi);
+  const countriesForCode = getCountries("world").filter(
+    (country) => country.callingCode === callingCode,
+  );
   return {
     ddi,
     label: callingCode,
+    flags: countriesForCode.map(({ flag }) => flag),
+    iso2s: countriesForCode.map(({ iso2: code }) => code),
     phoneDigitLengths: iso2 ? getPhoneMeta(iso2).digitLengths : [],
     docTypes: getDocTypesForDDI(ddi),
   };
 });
+
+export interface GetCountryRulesOptions {
+  /**
+   * ISO2 codes to pin at the start of the result, in the given order. Any
+   * remaining rules keep the order determined by {@link GetCountryRulesOptions.sort}
+   * (or insertion order when `sort` is omitted).
+   */
+  pin?: string[];
+  /**
+   * How to order rules that were not pinned. Defaults to insertion order.
+   * `"ddi"` sorts by numeric DDI ascending; `"alpha"` sorts by the calling
+   * code label ascending; a comparator function receives the two rules.
+   */
+  sort?: "alpha" | "ddi" | ((a: LegacyCountryRule, b: LegacyCountryRule) => number);
+}
+
+/**
+ * Legacy-shaped country rules derived from any {@link RegionScope}. Countries
+ * sharing a calling code are grouped into a single entry (e.g. `+1` → one
+ * entry aggregating US and CA documents). When no country in the group has a
+ * curated document rule, the fallback rule (`validationLevel: "fallback"`) is
+ * emitted so callers never receive an empty `docTypes` list.
+ *
+ * Additive companion to the fixed {@link COUNTRY_RULES} constant: consumers
+ * that need a specific region (e.g. `"latam"`) can now derive it without
+ * reimplementing the grouping.
+ *
+ * `options.pin` places the given ISO2s' rules first; `options.sort` orders the
+ * remainder. Both are optional and never change existing (unpinned, unsorted)
+ * output when omitted.
+ */
+export function getCountryRules(
+  scope: RegionScope = "world",
+  options: GetCountryRulesOptions = {},
+): LegacyCountryRule[] {
+  const grouped = new Map<string, CountryInfo[]>();
+  for (const country of getCountries(scope)) {
+    const list = grouped.get(country.callingCode) ?? [];
+    list.push(country);
+    grouped.set(country.callingCode, list);
+  }
+  const rules: LegacyCountryRule[] = [];
+  for (const [callingCode, countries] of grouped) {
+    const ddi = onlyDigits(callingCode);
+    if (!ddi) continue;
+    const representative = iso2FromDDI(ddi) ?? countries[0]?.iso2;
+    if (!representative) continue;
+    const docs = countries.flatMap(({ iso2 }) => getDocumentConfigs(iso2).map(asLegacyRule));
+    const deduped = docs.filter((rule, index) => docs.findIndex(({ key }) => key === rule.key) === index);
+    const docTypes = deduped.length > 0
+      ? deduped
+      : [fallbackLegacyRuleFor(representative)];
+    rules.push({
+      ddi,
+      label: callingCode,
+      flags: countries.map(({ flag }) => flag),
+      iso2s: countries.map(({ iso2 }) => iso2),
+      phoneDigitLengths: getPhoneMeta(representative).digitLengths,
+      docTypes,
+    });
+  }
+  return applyRuleOrdering(rules, options);
+}
+
+function applyRuleOrdering(
+  rules: LegacyCountryRule[],
+  options: GetCountryRulesOptions,
+): LegacyCountryRule[] {
+  const { pin, sort } = options;
+  if (!pin?.length && !sort) return rules;
+
+  const pinned: LegacyCountryRule[] = [];
+  const rest: LegacyCountryRule[] = [];
+  if (pin?.length) {
+    const pinOrder = new Map<string, number>();
+    pin.forEach((iso2, index) => {
+      pinOrder.set(iso2.trim().toUpperCase(), index);
+    });
+    const chosen = new Map<number, LegacyCountryRule>();
+    for (const rule of rules) {
+      const matchIndex = rule.iso2s
+        ?.map((iso2) => pinOrder.get(iso2))
+        .find((index): index is number => index !== undefined);
+      if (matchIndex === undefined) {
+        rest.push(rule);
+        continue;
+      }
+      if (!chosen.has(matchIndex)) chosen.set(matchIndex, rule);
+      else rest.push(rule);
+    }
+    for (let index = 0; index < pin.length; index += 1) {
+      const rule = chosen.get(index);
+      if (rule) pinned.push(rule);
+    }
+  } else {
+    rest.push(...rules);
+  }
+
+  if (sort === "ddi") {
+    rest.sort((a, b) => Number(a.ddi) - Number(b.ddi));
+  } else if (sort === "alpha") {
+    rest.sort((a, b) => a.label.localeCompare(b.label));
+  } else if (typeof sort === "function") {
+    rest.sort(sort);
+  }
+  return [...pinned, ...rest];
+}
+
+/**
+ * Convenience singular of {@link getCountryRules} — returns the rule matching
+ * the given DDI within the requested scope, or `undefined`. Additive: existing
+ * callers that use `getCountryRules(...).find(...)` keep working.
+ */
+export function getCountryRule(
+  ddi: string,
+  scope: RegionScope = "world",
+): LegacyCountryRule | undefined {
+  const normalized = onlyDigits(ddi);
+  return getCountryRules(scope).find((rule) => rule.ddi === normalized);
+}
+
+/**
+ * Thin wrapper over the runtime's `Intl.DisplayNames` API, resolving the
+ * localized name of a country by ISO2. Defaults to English and gracefully
+ * returns the ISO2 when the runtime lacks `Intl.DisplayNames` or the code is
+ * unknown. Bundle cost is zero — the platform ships the CLDR table.
+ */
+export function localizeCountryName(iso2: string, locale = "en"): string {
+  const code = iso2.trim().toUpperCase();
+  try {
+    const resolved = new Intl.DisplayNames([locale], { type: "region" }).of(code);
+    return resolved ?? code;
+  } catch {
+    return code;
+  }
+}
 
 export const findCountry = (ddi: string): LegacyCountryRule | undefined =>
   COUNTRY_RULES.find((country) => country.ddi === onlyDigits(ddi));

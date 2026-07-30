@@ -5,13 +5,16 @@
 [![CI](https://github.com/RaiVandeberg/intl-fiscal-registry/actions/workflows/publish.yml/badge.svg)](https://github.com/RaiVandeberg/intl-fiscal-registry/actions/workflows/publish.yml)
 [![license](https://img.shields.io/npm/l/intl-fiscal-registry)](./LICENSE)
 
-Biblioteca TypeScript para países, telefones e documentos fiscais de empresas. Funciona em
-Node.js, browsers e runtimes edge, sem React, DOM ou dependências de runtime.
+Biblioteca TypeScript para países, telefones e documentos fiscais — de empresa e de pessoa
+física. Funciona em Node.js, browsers e runtimes edge, sem React, DOM ou dependências de runtime.
 
 - 249 países e territórios ISO;
 - países, bandeiras, DDI e agrupamentos regionais;
 - máscara, validação e conversão de telefones para E.164;
-- documentos fiscais com máscara, limite de comprimento e nível de validação explícito;
+- documentos fiscais **de empresa** (`/documents`) com máscara, limite de comprimento e nível
+  de validação explícito;
+- documentos **de pessoa física** (`/personal`) — CPF, DNI, CURP, SSN/SIN e outros — com o
+  mesmo formato de config;
 - ESM, CommonJS e tipos TypeScript;
 - regras auditáveis com fontes oficiais.
 
@@ -122,9 +125,48 @@ const coverage = getDocumentCoverage();
 // formatOnlyCountries e fallbackCountries
 ```
 
-Há regras específicas para 44 países, incluindo CNPJ/BR, CUIT/AR, RUT/CL, ABN/AU, Corporate
+Há regras específicas para 57 países, incluindo CNPJ/BR, CUIT/AR, RUT/CL, ABN/AU, Corporate
 Number/JP, GSTIN/IN, UEN/SG, NZBN/NZ, BRN/KR, EIN/US, BN/CA, VAT dos 27 membros da UE e formatos
-latino-americanos documentados. Os demais países usam o fallback explícito.
+latino-americanos documentados — UY (RUT), BO (NIT), GT (NIT), VE (RIF), DO (RNC), CR
+(Cédula Jurídica), HN (RTN), SV (NIT), PA (RUC), NI (RUC), CU (NIT), HT (NIF) e PR (alias do
+EIN federal). Os demais países usam o fallback explícito.
+
+## Documentos de pessoa física
+
+O subpath `/personal` espelha `/documents`, mas para documentos de pessoa física — CPF, DNI,
+CURP, SSN, SIN e afins. Assim como em `/documents`, cada regra traz `example`, `maxLength`,
+`mask`, `validate` e um `validationLevel` explícito.
+
+```ts
+import {
+  getPersonalDocuments,
+  maskPersonalDocument,
+  resolvePersonalDocument,
+  validatePersonalDocument,
+} from "intl-fiscal-registry/personal";
+
+const cpf = resolvePersonalDocument("BR", "CPF");
+cpf.example;          // "529.982.247-25"
+cpf.validationLevel;  // "checksum"
+
+validatePersonalDocument("BR", "CPF", "529.982.247-25");
+// { valid: true, usedFallback: false }
+
+maskPersonalDocument("BR", "CPF", "52998224725");
+// "529.982.247-25"
+
+getPersonalDocuments("AR").map(({ type }) => type);
+// ["DNI", "CUIL"]
+```
+
+Cobertura das Américas com checksum: BR (CPF), AR (CUIL), CA (SIN Luhn), EC (Cédula), UY (CI).
+Com validação estrutural: US (SSN — rejeita `000/666/9xx`, grupo `00`, serial `0000`) e PR
+(alias federal). Com validação de formato/regex: AR (DNI), MX (CURP), PE (DNI), PY (CI),
+GT (DPI), HN (Identidad), HT (NIF), SV (DUI), DO (Cédula), CR (Cédula) e VE (Cédula).
+
+Jurisdições onde o mesmo documento vale para PF e PJ (Chile — RUT único) devolvem `[]` em
+`getPersonalDocuments()`; use `/documents` nesses casos. Países não curados caem em um
+`PERSONAL_ID` de fallback permissivo, do mesmo jeito que `/documents`.
 
 ## Telefones
 
@@ -179,6 +221,7 @@ Use o pacote principal ou subpaths menores:
 import { getCountry, createPhone } from "intl-fiscal-registry";
 import { getCountries } from "intl-fiscal-registry/countries";
 import { maskDocument } from "intl-fiscal-registry/documents";
+import { validatePersonalDocument } from "intl-fiscal-registry/personal";
 import { getPhoneMeta } from "intl-fiscal-registry/phone";
 ```
 
@@ -209,6 +252,50 @@ const nanpDocuments = getDocTypesForDDI("1"); // inclui EIN_US e BN_CA
 cnpj?.mask("11222333000181");
 validatePhoneByDDI("4155552671", "1", "US");
 ```
+
+### Helpers aditivos
+
+Complementos que evitam boilerplate no consumidor. Todos aditivos — as funções acima
+continuam com o mesmo comportamento.
+
+```ts
+import {
+  getAllDocsForDDI,
+  getCountryRule,
+  getCountryRules,
+  getDocTypesForDDIOrdered,
+  getDocTypesForDDIWithFallback,
+  getPlaceholder,
+  localizeCountryName,
+} from "intl-fiscal-registry/compat";
+
+// Placeholder curado (ou undefined em fallback), sem o "Documento" genérico.
+getPlaceholder("CPF");        // "529.982.247-25"
+getPlaceholder("TAX_ID_BO");  // undefined
+
+// Singular do getCountryRules — evita .find(...).
+getCountryRule("55")?.docTypes.some(({ key }) => key === "CNPJ");
+
+// Regras por escopo, com pin e sort opcionais.
+getCountryRules("latam", { pin: ["BR"], sort: "ddi" });
+
+// Corporate + personal juntos, PJ primeiro, nunca vazio.
+const docs = getAllDocsForDDI("55");
+docs.map(({ key }) => key); // ["CNPJ", "CPF"]
+
+// getDocTypesForDDI variantes: sem quebrar a original.
+getDocTypesForDDIWithFallback("263"); // devolve TAX_ID_ZW em vez de []
+getDocTypesForDDIOrdered("1", "CA");  // [BN_CA, EIN_US] — ordena em vez de filtrar
+
+// Nome localizado do país sem precisar embarcar tabela CLDR.
+localizeCountryName("BR", "pt-BR"); // "Brasil"
+localizeCountryName("BR", "es");    // "Brasil"
+localizeCountryName("BR");          // "Brazil"
+```
+
+`LegacyCountryRule` também ganhou `flags?: string[]` e `iso2s?: string[]` (opcionais no
+tipo, sempre populados em runtime), úteis pra montar labels tipo `"🇧🇷 +55"` ou distinguir
+países num DDI compartilhado (`+1` → `["CA","US","PR"]`).
 
 ## Desenvolvimento e contribuição
 

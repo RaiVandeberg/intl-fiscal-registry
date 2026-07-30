@@ -51,6 +51,11 @@
       "types": "./dist/compat/index.d.ts",
       "import": "./dist/compat/index.js",
       "require": "./dist/compat/index.cjs"
+    },
+    "./personal": {
+      "types": "./dist/personal/index.d.ts",
+      "import": "./dist/personal/index.js",
+      "require": "./dist/personal/index.cjs"
     }
   },
   "scripts": {
