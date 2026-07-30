@@ -79,6 +79,26 @@ export interface LegacyCountryRule {
   docTypes: LegacyDocRule[];
 }
 
+/**
+ * Some ISO territories do not have a distinct widely-supported emoji. Their
+ * flag is commonly rendered as the administering country's flag, which would
+ * show the same icon twice in a rule grouped by calling code.
+ */
+const FLAG_DISPLAY_ALIASES = new Map<string, string>([
+  ["BV", "NO"],
+  ["HM", "AU"],
+  ["SJ", "NO"],
+  ["UM", "US"],
+]);
+
+function countriesWithDistinctFlags(countries: CountryInfo[]): CountryInfo[] {
+  const iso2s = new Set(countries.map(({ iso2 }) => iso2));
+  return countries.filter(({ iso2 }) => {
+    const displayedAs = FLAG_DISPLAY_ALIASES.get(iso2);
+    return !displayedAs || !iso2s.has(displayedAs);
+  });
+}
+
 function legacyKey(iso2: string, type: string): string {
   const alias = Object.entries(LEGACY_DOCUMENT_ALIASES).find(
     ([, target]) => target.iso2 === iso2 && target.type === type,
@@ -349,11 +369,12 @@ export const COUNTRY_RULES: LegacyCountryRule[] = legacyCallingCodes.map((callin
   const countriesForCode = getCountries("world").filter(
     (country) => country.callingCode === callingCode,
   );
+  const displayCountries = countriesWithDistinctFlags(countriesForCode);
   return {
     ddi,
     label: callingCode,
-    flags: countriesForCode.map(({ flag }) => flag),
-    iso2s: countriesForCode.map(({ iso2: code }) => code),
+    flags: displayCountries.map(({ flag }) => flag),
+    iso2s: displayCountries.map(({ iso2: code }) => code),
     phoneDigitLengths: iso2 ? getPhoneMeta(iso2).digitLengths : [],
     docTypes: getDocTypesForDDI(ddi),
   };
@@ -410,11 +431,12 @@ export function getCountryRules(
     const docTypes = deduped.length > 0
       ? deduped
       : [fallbackLegacyRuleFor(representative)];
+    const displayCountries = countriesWithDistinctFlags(countries);
     rules.push({
       ddi,
       label: callingCode,
-      flags: countries.map(({ flag }) => flag),
-      iso2s: countries.map(({ iso2 }) => iso2),
+      flags: displayCountries.map(({ flag }) => flag),
+      iso2s: displayCountries.map(({ iso2 }) => iso2),
       phoneDigitLengths: getPhoneMeta(representative).digitLengths,
       docTypes,
     });
