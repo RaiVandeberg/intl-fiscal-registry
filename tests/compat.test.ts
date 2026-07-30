@@ -150,6 +150,24 @@ describe("legacy DDI compatibility", () => {
     expect(brFromLegacy?.iso2s).toEqual(["BR"]);
   });
 
+  it("does not repeat administering-country flags for ISO territories", () => {
+    const northAmerica = getCountryRule("1");
+    expect(northAmerica?.iso2s).toContain("US");
+    expect(northAmerica?.iso2s).not.toContain("UM");
+
+    const australia = getCountryRule("61");
+    expect(australia?.iso2s).toEqual(["AU", "CX", "CC"]);
+    expect(australia?.iso2s).not.toContain("HM");
+
+    const norway = getCountryRule("47");
+    expect(norway?.flags).toEqual(["🇳🇴"]);
+    expect(norway?.iso2s).toEqual(["NO"]);
+
+    expect(northAmerica?.flags?.length).toBe(northAmerica?.iso2s?.length);
+    expect(australia?.flags?.length).toBe(australia?.iso2s?.length);
+    expect(norway?.flags?.length).toBe(norway?.iso2s?.length);
+  });
+
   it("adds getAllDocsForDDI merging corporate + personal rules PJ-first", () => {
     const brDocs = getAllDocsForDDI("55");
     const keys = brDocs.map(({ key }) => key);
