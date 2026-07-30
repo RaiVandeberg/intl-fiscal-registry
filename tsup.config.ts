@@ -7,6 +7,7 @@ export default defineConfig({
     "documents/index": "src/documents/index.ts",
     "phone/index": "src/phone/index.ts",
     "compat/index": "src/compat/index.ts",
+    "personal/index": "src/personal/index.ts",
   },
   format: ["esm", "cjs"],
   dts: true,
