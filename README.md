@@ -213,6 +213,25 @@ isCountryCode("BR");    // true
 isCountryCode("XX");    // false
 ```
 
+### Nomes localizados
+
+`name` vem em inglês por padrão. Passe `locale` para receber o nome traduzido,
+resolvido via `Intl.DisplayNames`:
+
+```ts
+getCountry("BR")?.name;                        // "Brazil"
+getCountry("BR", { locale: "pt-BR" })?.name;   // "Brasil"
+getCountry("DE", { locale: "pt-BR" })?.name;   // "Alemanha"
+
+getCountries("world", { locale: "pt-BR" });    // 249 países com nome em pt-BR
+getCountries(["BR", "US"], { locale: "es" });  // ["Brasil", "Estados Unidos"]
+```
+
+A opção é aceita por `getCountry` e `getCountries`, aplica-se a qualquer escopo e
+só altera o campo `name` — `iso2`, `iso3`, `callingCode` e `flag` seguem iguais.
+Se o runtime não tiver `Intl.DisplayNames`, o locale for inválido ou não houver
+tradução para o país, o nome em inglês é mantido.
+
 ## Importações
 
 Use o pacote principal ou subpaths menores:

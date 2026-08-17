@@ -22,6 +22,39 @@ describe("countries", () => {
     expect(getCountries("mercosul").map(({ iso2 }) => iso2)).toContain("BR");
     expect(getCountries(["BR", "US", "invalid"]).map(({ iso2 }) => iso2)).toEqual(["BR", "US"]);
   });
+
+  it("keeps English names when no locale is given", () => {
+    expect(getCountry("BR")?.name).toBe("Brazil");
+    expect(getCountries("mercosul").map(({ name }) => name)).toContain("Brazil");
+  });
+
+  it("localizes names through the optional locale", () => {
+    expect(getCountry("BR", { locale: "pt-BR" })?.name).toBe("Brasil");
+    expect(getCountry("DE", { locale: "pt-BR" })?.name).toBe("Alemanha");
+    expect(getCountry("GB", { locale: "es" })?.name).toBe("Reino Unido");
+
+    const localized = getCountries(["BR", "US"], { locale: "pt-BR" });
+    expect(localized.map(({ name }) => name)).toEqual(["Brasil", "Estados Unidos"]);
+  });
+
+  it("keeps every other field untouched when localizing", () => {
+    expect(getCountry("BR", { locale: "pt-BR" })).toMatchObject({
+      iso2: "BR",
+      iso3: "BRA",
+      callingCode: "+55",
+      flag: "🇧🇷",
+    });
+  });
+
+  it("falls back to the English name on invalid locales", () => {
+    expect(getCountry("BR", { locale: "not-a-locale!" })?.name).toBe("Brazil");
+  });
+
+  it("localizes the whole world scope without dropping countries", () => {
+    const world = getCountries("world", { locale: "pt-BR" });
+    expect(world).toHaveLength(249);
+    expect(world.every(({ name }) => name.length > 0)).toBe(true);
+  });
 });
 
 describe("documents", () => {
